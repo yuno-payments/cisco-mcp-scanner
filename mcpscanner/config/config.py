@@ -50,6 +50,7 @@ class Config:
         llm_temperature: float = None,
         llm_base_url: str = None,
         llm_api_version: str = None,
+        llm_oauth: bool = False,
         llm_rate_limit_delay: float = None,
         llm_max_retries: int = None,
         aws_region_name: str = None,
@@ -108,6 +109,7 @@ class Config:
         )
         self._llm_base_url = llm_base_url or CONSTANTS.DEFAULT_LLM_BASE_URL
         self._llm_api_version = llm_api_version or CONSTANTS.DEFAULT_LLM_API_VERSION
+        self._llm_oauth = bool(llm_oauth)
         self._llm_rate_limit_delay = (
             llm_rate_limit_delay if llm_rate_limit_delay is not None else 1.0
         )
@@ -219,6 +221,11 @@ class Config:
             Optional[str]: The API version string if required by the provider.
         """
         return self._llm_api_version
+
+    @property
+    def llm_oauth(self) -> bool:
+        """True when llm_provider_api_key is a Claude-Code OAuth (Max) Bearer token."""
+        return self._llm_oauth
 
     @property
     def llm_rate_limit_delay(self) -> float:

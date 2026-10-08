@@ -44,6 +44,74 @@ class SecurityError(Exception):
     pass
 
 
+async def _anthropic_oauth_completion(
+    model, messages, max_tokens, temperature, timeout, token
+):
+    """Call Anthropic's Messages API with a Claude-Code OAuth (Max subscription) token,
+    replicating the exact auth our stack uses elsewhere (Shannon, secops-agent):
+
+      - ``Authorization: Bearer <token>``  (NOT x-api-key)
+      - the claude-code + oauth beta headers + ``user-agent``/``x-app`` Claude Code
+        identity headers — without all of them Anthropic returns a terse 429/400
+        because it treats the request as not coming from Claude Code
+      - the "You are Claude Code, Anthropic's official CLI for Claude." identity as the
+        FIRST system block (Anthropic requires it for OAuth to reach sonnet/opus)
+
+    litellm cannot express this combination, so Claude-OAuth bypasses litellm and hits
+    the API directly. Returns a litellm-shaped response (``.choices[0].message.content``
+    + ``.finish_reason``) so the caller is unchanged.
+    """
+    import re
+    import httpx
+    from types import SimpleNamespace
+
+    mdl = re.sub(r"^anthropic/", "", (model or "claude-sonnet-4-5"))
+    system_text = ""
+    user_parts: list[str] = []
+    for m in (messages or []):
+        role = (m or {}).get("role")
+        content = (m or {}).get("content") or ""
+        if role == "system":
+            system_text = content
+        elif role == "user":
+            user_parts.append(content)
+    body = {
+        "model": mdl,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "system": [
+            {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
+            {"type": "text", "text": system_text},
+        ],
+        "messages": [{"role": "user", "content": "\n\n".join(user_parts)}],
+    }
+    headers = {
+        "authorization": f"Bearer {token}",
+        "anthropic-beta": "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14",
+        "anthropic-version": "2023-06-01",
+        "user-agent": "claude-cli/2.1.2 (external, cli)",
+        "x-app": "cli",
+        "content-type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=timeout or 60.0) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages", headers=headers, json=body
+        )
+    resp.raise_for_status()
+    data = resp.json()
+    text = "".join(
+        b.get("text") or "" for b in (data.get("content") or []) if b.get("type") == "text"
+    )
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=text),
+                finish_reason=data.get("stop_reason") or "stop",
+            )
+        ]
+    )
+
+
 class LLMAnalyzer(BaseAnalyzer):
     """Analyzer class for analyzing MCP tools using any LLM-supported model.
 
@@ -112,6 +180,10 @@ class LLMAnalyzer(BaseAnalyzer):
         # Store configuration for per-request usage
         self._base_url = config.llm_base_url
         self._api_version = config.llm_api_version
+        # Claude-Code OAuth (Max subscription) mode: when set, the api_key is a Bearer
+        # OAuth token and we bypass litellm for the exact Anthropic auth (beta headers +
+        # Claude Code identity system block). See _anthropic_oauth_completion.
+        self._oauth = bool(getattr(config, "llm_oauth", False))
         self._max_tokens = config.llm_max_tokens
         self._temperature = config.llm_temperature
         self._rate_limit_delay = config.llm_rate_limit_delay
@@ -619,6 +691,13 @@ class LLMAnalyzer(BaseAnalyzer):
         max_attempts = self._max_retries + 1
 
         async def operation() -> Any:
+            # Claude-Code OAuth: bypass litellm for the exact Anthropic auth (Bearer +
+            # beta headers + Claude Code identity system block) so the API doesn't 429/400.
+            if self._oauth:
+                return await _anthropic_oauth_completion(
+                    self._model, messages, self._max_tokens,
+                    self._temperature, self._llm_timeout, self._api_key,
+                )
             self.logger.debug(
                 "LLM API request for %s (max_attempts=%d)",
                 context,
