@@ -1,0 +1,22 @@
+# Worker-friendly image for PaaS cisco-mcp-scanner (K8s Job).
+# Installs the fork (with Claude-OAuth support) + aws cli; resets ENTRYPOINT so
+# the pentest-worker's build_command runs the `mcp-scanner` CLI directly.
+# BUILD: docker buildx build -f Dockerfile.worker --platform linux/amd64 --provenance=false --sbom=false --push .
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bash ca-certificates git libmagic1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir awscli
+# ^ bash is REQUIRED: the pentest-worker runs the Job command via
+# `/bin/bash -c` (the build_command uses mapfile + process substitution). The
+# python:3.12-slim base ships only dash at /bin/sh, so without bash the Job pod
+# fails to start with "exec /bin/bash: no such file or directory".
+
+WORKDIR /src
+COPY pyproject.toml README.md uv.lock ./
+COPY mcpscanner ./mcpscanner
+RUN pip install --no-cache-dir .
+
+WORKDIR /work
+ENTRYPOINT []
