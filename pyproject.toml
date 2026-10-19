@@ -28,7 +28,7 @@ dependencies = [
     "fastapi>=0.125.0",
     "uvicorn>=0.29.0",
     "pydantic>=2.6.0",
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.2",
     # Exact pin. 1.93.2 is the first 1.93 release that fixes CVE-2026-84377.
     "litellm==1.93.2",
     "expandvars>=0.12.0",
