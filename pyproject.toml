@@ -32,6 +32,9 @@ dependencies = [
     # Exact pin. 1.93.2 is the first 1.93 release that fixes CVE-2026-84377.
     "litellm==1.93.2",
     "expandvars>=0.12.0",
+    # Security constraints for transitive dependencies
+    "urllib3>=2.7.0",
+    "starlette>=1.0.1",
     # JS/TS parsing for npm behavioral analysis pins the shared tree-sitter
     # runtime to a tested ABI range (other language packs stay >=0.21.0,
     # which the <0.26 ceiling still satisfies).
