@@ -22,7 +22,7 @@ classifiers = [
     "Intended Audience :: Developers"
 ]
 dependencies = [
-    "mcp[cli]>=1.25.0",
+    "mcp[cli]>=1.30.0",
     "httpx>=0.28.1",
     "yara-python>=4.5.4",
     "fastapi>=0.125.0",
@@ -48,6 +48,11 @@ dependencies = [
     "tree-sitter-php>=0.21.0",
     "puremagic>=1.28",
     "pip-audit>=2.7.0",
+    # Security: Transitive dependency constraints to fix vulnerabilities
+    "starlette>=1.3.1",  # CVE-2026-54283, CVE-2026-54282
+    "python-multipart>=0.0.31",  # CVE-2026-53539, CVE-2026-53538, CVE-2026-53540
+    "cryptography>=48.0.1",  # GHSA-537c-gmf6-5ccf (vulnerable OpenSSL)
+    "pip>=26.1.2",  # CVE-2026-8643
 ]
 
 [project.optional-dependencies]
